@@ -22,6 +22,7 @@
 
 
 FirebaseData fb_readBalanca;
+FirebaseData fb_write;
 String parentPathBalanca = "/user1/vitro2545/balan%C3%A7a";
 String childPathBalanca[2] = {"/on", "/pes"};
 
@@ -39,7 +40,7 @@ void streamCallbackBalanca(MultiPathStream stream)
   {
     Serial.println("SEPARACION");
     Serial.println(stream.get(childPathBalanca[i]));
-    //comprovar si ha canviat els fills
+    //comprovar si ha canviat el fill
     if (stream.get(childPathBalanca[i]))
     {
       Serial.printf("path: %s, event: %s, type: %s, value: %s%s", stream.dataPath.c_str(), stream.eventType.c_str(), stream.type.c_str(), stream.value.c_str(), i < numChild - 1 ? "\n" : "");
@@ -104,6 +105,9 @@ void setup() {
     Serial.printf("sream begin error, %s\n\n", fb_readBalanca.errorReason().c_str());
   }
   Firebase.RTDB.setMultiPathStreamCallback(&fb_readBalanca, streamCallbackBalanca, streamTimeoutCallbackBalanca);
+  Serial.println("HOLAA");
+  
+  
 }
 
 void loop() {
@@ -112,7 +116,8 @@ void loop() {
   if(Firebase.ready() && (millis() - sendDataPrevMillis > 15000 || sendDataPrevMillis == 0) ){
     //Serial.println("hiii");
     sendDataPrevMillis = millis();
-    Firebase.RTDB.setMultiPathStreamCallback(&fb_readBalanca, streamCallbackBalanca, streamTimeoutCallbackBalanca);
+    //escriptura
+    Firebase.RTDB.setIntAsync(&fb_write, "/user1/vitro2545/on", 55);
   }
 
 }
