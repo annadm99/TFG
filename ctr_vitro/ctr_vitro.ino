@@ -14,6 +14,7 @@ bool ctr_on = false;
 //per saber l'ultim seleccionat
 int8_t ctr_foc = -1;
 bool vitro_ON=false;
+bool change=false;
 
 int8_t cont_ON=0;
 int8_t cont_P=0;
@@ -24,6 +25,8 @@ int8_t cont_MINUS=0;
 
 
 unsigned long sendDataPrevMillis = 0;
+unsigned long vitroOnOff = 0;
+unsigned long selFoc = 0;
 
 class foc {
   private:
@@ -99,6 +102,9 @@ void loop() {
     if(ctr_on && !vitro_ON && cont_ON==10){
       vitro_ON=true;
       cont_ON=0;
+      vitroOnOff=millis();
+      Serial.println("OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOONNNNNNNNNNNNNNNNNNNNN");
+
     }
     else if(ctr_on && vitro_ON && cont_ON==10){
       cont_ON=0;
@@ -130,6 +136,8 @@ void loop() {
         cont_MINUS=0;
           
         Serial.println("P!!!!");
+
+        selFoc=millis();
       }
       else if((valueP <= 20) && (valueP > 0)){
         cont_P++;
@@ -147,6 +155,7 @@ void loop() {
         cont_MINUS=0;
         
         Serial.println("M!!!!");
+        selFoc=millis();
       }
       else if((valueM <= 20) && (valueM > 0) ){
         cont_M++;
@@ -164,12 +173,14 @@ void loop() {
         cont_MINUS=0;
         
         Serial.println("B!!!!");
+        selFoc=millis();
       }
       else if((valueB <= 20) && (valueB > 0)){
         cont_B++;
       }
       //si es pitja el +
       else if (cont_ADD==10) {
+        change=true;
         cont_B=0;
         cont_ON=0;
         cont_P=0;
@@ -202,10 +213,12 @@ void loop() {
         cont_M=0;
         cont_ADD=0;
         cont_MINUS=0;
+
         
         Serial.println("MINUS!!!!");
         if (ctr_foc != -1) {
           int8_t tmp_val = Focs.getValue(ctr_foc);
+          change=true;
           if (tmp_val == -1 || tmp_val == 0 ) {
             Serial.println("9");
             Focs.setActive(ctr_foc, 9);
@@ -214,6 +227,17 @@ void loop() {
             Serial.println(tmp_val - 1);
             Focs.setActive(ctr_foc, tmp_val - 1);
           }
+          int8_t counter_chng=0;
+          for(int i=0; i<3; i++){
+            int8_t tmp_val2 = Focs.getValue(i);
+            if(tmp_val2 == -1 || tmp_val2 == 0){
+              counter_chng++;
+            }
+          }
+          if(counter_chng==3){
+            change=false;
+            selFoc=millis();
+          }
         }
 
       }
@@ -221,10 +245,29 @@ void loop() {
         cont_MINUS++;
       }
 
+      //si no hi ha cap foc seleccionat es mira si han passat 9 seg
+      if((ctr_foc==-1) && ((millis()-vitroOnOff)>= 9000) ){
+        Serial.println("AHHHHHHHHHHHHHH!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        vitro_ON=false;
+        
+      }
+      //si hi ha un foc seleccionat i cap canvi, es mira si han passat 9 seg
+      else if(ctr_foc!=-1 && !change && (millis()-selFoc>= 9000)){
+        Serial.println("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb!!!!!!!");
+        ctr_foc=-1;
+        vitroOnOff=millis();
+      }
+      else if(change){
+        vitroOnOff=0;
+      }
+
     }
     //per apagar la vitro
     else if (!vitro_ON) {
       //reset de variables ctr
+      change=false;
+      vitroOnOff=0;
+      selFoc=0;
       ctr_on = false;
       ctr_foc = -1;
       Focs.setAllInactive();
