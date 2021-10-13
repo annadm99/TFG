@@ -1,9 +1,9 @@
 
 #define PIN_ON T4 //T0 24 //4
-#define PIN_ADD T6 //T2 2
+#define PIN_ADD T6 //T7 27
 #define PIN_MINUS T5 //T3 15
 #define PIN_P T3 //T4 13
-#define PIN_M T7 //T5 12 T7 27
+#define PIN_M T7 //T5 12
 #define PIN_B T0 //T6 14
 
 const String ID_P = "state_0";
@@ -112,12 +112,12 @@ void loop() {
     }
     //Serial.println(valueON);
     //Serial.println(ctr_on);
-    
+
     //si esta oberta
     if (vitro_ON) {
 
       //Serial.println("ON");
-      
+
       int valueADD = touchRead(PIN_ADD);
       int valueMINUS = touchRead(PIN_MINUS);
       int valueP = touchRead(PIN_P);
@@ -127,14 +127,14 @@ void loop() {
       //si es selecciona el foc petit
       if (cont_P==10) {
         ctr_foc = 0;
-       
+
         cont_P=0;
         cont_ON=0;
         cont_M=0;
         cont_B=0;
         cont_ADD=0;
         cont_MINUS=0;
-          
+
         Serial.println("P!!!!");
 
         selFoc=millis();
@@ -142,18 +142,18 @@ void loop() {
       else if((valueP <= 20) && (valueP > 0)){
         cont_P++;
       }
-       
+
       //si es selecciona el foc mitja
       else if (cont_M==10) {
         ctr_foc = 1;
-        
+
         cont_M=0;
         cont_ON=0;
         cont_P=0;
         cont_B=0;
         cont_ADD=0;
         cont_MINUS=0;
-        
+
         Serial.println("M!!!!");
         selFoc=millis();
       }
@@ -164,14 +164,14 @@ void loop() {
       //si es selecciona el foc gran
       else if (cont_B==10 ) {
         ctr_foc = 2;
-        
+
         cont_B=0;
         cont_ON=0;
         cont_P=0;
         cont_M=0;
         cont_ADD=0;
         cont_MINUS=0;
-        
+
         Serial.println("B!!!!");
         selFoc=millis();
       }
@@ -187,7 +187,7 @@ void loop() {
         cont_M=0;
         cont_ADD=0;
         cont_MINUS=0;
-        
+
         Serial.println("ADD!!!!");
         if (ctr_foc != -1) {
           int8_t tmp_val = Focs.getValue(ctr_foc);
@@ -199,7 +199,7 @@ void loop() {
             Focs.setActive(ctr_foc, tmp_val + 1);
             Serial.println(tmp_val + 1);
           }
-          
+
         }
 
       }
@@ -214,7 +214,7 @@ void loop() {
         cont_ADD=0;
         cont_MINUS=0;
 
-        
+
         Serial.println("MINUS!!!!");
         if (ctr_foc != -1) {
           int8_t tmp_val = Focs.getValue(ctr_foc);
@@ -249,7 +249,7 @@ void loop() {
       if((ctr_foc==-1) && ((millis()-vitroOnOff)>= 9000) ){
         Serial.println("AHHHHHHHHHHHHHH!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
         vitro_ON=false;
-        
+
       }
       //si hi ha un foc seleccionat i cap canvi, es mira si han passat 9 seg
       else if(ctr_foc!=-1 && !change && (millis()-selFoc>= 9000)){
