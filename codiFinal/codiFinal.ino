@@ -42,11 +42,8 @@ const String ID_M = "state_1";
 const String ID_P = "state_2";
 
 //firebase
-FirebaseData fb_readOn;
 FirebaseData fb_write;
-String parentPathOn = "/user1/vitro2545/";
-String childPathOn[2] = {"/on","/num_control/0_state"};
-
+FirebaseData stream;
 
 FirebaseAuth auth;
 FirebaseConfig config;
@@ -68,7 +65,8 @@ int8_t cont_MINUS=0;
 
 bool notifyFirebaseOn=false;
 String notifyFirebaseFoc="";
-bool notifyFirebaseFocsAdd;
+bool notifyFirebaseFocsAdd=false;
+bool notifyFirebaseFocsMinus=false;
 
 
 unsigned long sendDataPrevMillis = 0;
@@ -95,7 +93,7 @@ class foc {
 
 class focs {
   private:
-    foc array_focs[3] = {foc(ID_P), foc(ID_M), foc(ID_B)};
+    foc array_focs[3] = {foc(ID_B), foc(ID_M),foc(ID_P)};
   public:
     void setActive(int8_t id, int8_t value) {
       array_focs[id].updateValue(value);
@@ -116,73 +114,91 @@ class focs {
 //creacio dels focs
 focs Focs = focs();
 
-
-void streamCallbackOn(MultiPathStream stream)
-{
-  size_t numChild = sizeof(childPathOn) / sizeof(childPathOn[0]);
-  //Serial.println(numChild);
-
-  for (size_t i = 0; i < numChild; i++)
-  {
-    Serial.println("SEPARACION");
-    Serial.println(stream.get(childPathOn[i]));
-    //comprovar si ha canviat el fill
-    if (stream.get(childPathOn[i]))
-    {
-      //Serial.printf("path: %s, event: %s, type: %s, value: %s%s \n", stream.dataPath.c_str(), stream.eventType.c_str(), stream.type.c_str(), stream.value.c_str(), i < numChild - 1 ? "\n" : "");
-      if(vitro_ON!=stream.value.toInt() && i==0){
-        notifyFirebaseOn=true;
-        /*Serial.println("aquiiii");
-        cont_ON=10;*/
-      }
-      else{
-        Serial.println("pffff");
-        if(i==1){
-          int8_t val=Focs.getValue(i-1);
-          int8_t valFire=stream.value.toInt();
-         Serial.println(valFire);
-          if(valFire==5){
-            notifyFirebaseFocsAdd=true;
-            notifyFirebaseFoc=ID_B;
-          }
-          else if(valFire==9){
-            notifyFirebaseFocsAdd=false;
-            notifyFirebaseFoc=ID_B;
-          }
-          else if(val!=-1){
-            notifyFirebaseFocsAdd=val>valFire?false:true;
-            notifyFirebaseFoc=ID_B;
-          }
-          
-        }
-
-        
-      }
-
+//assignacio corresponent del nivell del foc
+void ctr_numCtr(int8_t val, int8_t valFire, String ID){
+   if(val!=-1){
+     if(valFire>val){
+      notifyFirebaseFocsAdd=true;
+      notifyFirebaseFoc=ID;
+     }
+     else if(val>valFire && (val!=9 || valFire!=0)){
+      Serial.println(val);
+      Serial.println(valFire);
+      notifyFirebaseFocsMinus=true;
+      notifyFirebaseFoc=ID;
+     }
+   }
+   else if(val==-1){
+    if(valFire==5){
+      notifyFirebaseFocsAdd=true;
+      notifyFirebaseFoc=ID;
     }
-  }
-
-  Serial.println();
-
-  //This is the size of stream payload received (current and max value)
-  //Max payload size is the payload size under the stream path since the stream connected
-  //and read once and will not update until stream reconnection takes place.
-  //This max value will be zero as no payload received in case of ESP8266 which
-  //BearSSL reserved Rx buffer size is less than the actual stream payload.
-  Serial.printf("Received stream payload size: %d (Max. %d)\n\n", stream.payloadLength(), stream.maxPayloadLength());
+    else if (valFire==9){
+      Serial.println(valFire);
+      notifyFirebaseFocsMinus=true;
+      notifyFirebaseFoc=ID;
+    }
+ }
 }
 
-void streamTimeoutCallbackOn(bool timeout)
+void streamCallback(FirebaseStream data)
+{
+  FirebaseJson *json = data.to<FirebaseJson *>();
+  //Print all object data
+  json->toString(Serial, true);
+ 
+  FirebaseJsonData resultOn;
+  json->get(resultOn, "/on");
+  
+  FirebaseJsonData resultNumCtr_0;
+  json->get(resultNumCtr_0, "/0_state");
+
+  FirebaseJsonData resultNumCtr_1;
+  json->get(resultNumCtr_1, "/1_state");
+
+  FirebaseJsonData resultNumCtr_2;
+  json->get(resultNumCtr_2, "/2_state");
+  
+  if (resultOn.success)
+  {
+    //Print its content e.g.string, int, double, bool whereas object, array and null also can access as string
+    Serial.println("soc onnnnn");
+    if(vitro_ON!=resultOn.to<int>()){
+      notifyFirebaseOn=true;
+    }
+  }
+  if(resultNumCtr_0.success){ //mirar datapath data.dataPath().c_str()
+   
+   int8_t val=Focs.getValue(0);
+   int8_t valFire=resultNumCtr_0.to<int>();
+   String ID=ID_B;
+   ctr_numCtr(val, valFire, ID);
+
+  }
+  if(resultNumCtr_1.success){
+    int8_t val=Focs.getValue(1);
+    int8_t valFire=resultNumCtr_1.to<int>();
+    String ID=ID_M;
+    ctr_numCtr(val, valFire, ID);
+  }
+  if(resultNumCtr_2.success){
+    int8_t val=Focs.getValue(2);
+    int8_t valFire=resultNumCtr_2.to<int>();
+    String ID=ID_P;
+    ctr_numCtr(val,valFire, ID);
+}
+  json->clear();
+  
+}
+
+void streamTimeoutCallback(bool timeout)
 {
   if (timeout)
     Serial.println("stream timed out, resuming...\n");
 
-  if (!fb_readOn.httpConnected())
-    Serial.printf("error code: %d, reason: %s\n\n", fb_readOn.httpCode(), fb_readOn.errorReason().c_str());
+  if (!stream.httpConnected())
+    Serial.printf("error code: %d, reason: %s\n\n", stream.httpCode(), stream.errorReason().c_str());
 }
-
-
-
 
 
 void setup() {
@@ -238,14 +254,12 @@ void setup() {
   /* Initialize the library with the Firebase authen and config */
   Firebase.begin(&config, &auth);
   
-  //lectura asíncrona de la balança
-  if (!Firebase.RTDB.beginMultiPathStream(&fb_readOn, parentPathOn)){
-    Serial.printf("sream begin error, %s\n\n", fb_readOn.errorReason().c_str());
+  //lectura asíncrona de l'estat de la vitro
+  if (!Firebase.RTDB.beginStream(&stream, "/user1/vitro2545")){
+    Serial.printf("sream begin error, %s\n\n", stream.errorReason().c_str());
   }
-  Firebase.RTDB.setMultiPathStreamCallback(&fb_readOn, streamCallbackOn, streamTimeoutCallbackOn);
+  Firebase.RTDB.setStreamCallback(&stream, streamCallback, streamTimeoutCallback);
 
-
-  
   Serial.println("HOLAA");
 
 }
@@ -318,9 +332,11 @@ void loop() {
       int valueB = touchRead(PIN_B);
 
       //si es selecciona el foc petit
-      if (cont_P==10) {
-        ctr_foc = 0;
+      if (cont_P==10 || notifyFirebaseFoc==ID_P) {
+        ctr_foc = 2;
 
+        notifyFirebaseFoc="";
+        
         cont_P=0;
         cont_ON=0;
         cont_M=0;
@@ -341,9 +357,10 @@ void loop() {
       }
 
       //si es selecciona el foc mitja
-      else if (cont_M==10) {
+      else if (cont_M==10 || notifyFirebaseFoc==ID_M) {
         ctr_foc = 1;
 
+        notifyFirebaseFoc="";
         
         cont_M=0;
         cont_ON=0;
@@ -366,7 +383,7 @@ void loop() {
 
       //si es selecciona el foc gran
       else if (cont_B==10 || notifyFirebaseFoc==ID_B) {
-        ctr_foc = 2;
+        ctr_foc = 0;
 
         cont_B=0;
         cont_ON=0;
@@ -375,7 +392,7 @@ void loop() {
         cont_ADD=0;
         cont_MINUS=0;
 
-        notifyFirebaseFoc="-";
+        notifyFirebaseFoc="";
         
         Serial.println("B!!!!");
 
@@ -389,7 +406,7 @@ void loop() {
         cont_B++;
       }
       //si es pitja el +
-      else if (cont_ADD==10 || (notifyFirebaseFoc!="" && notifyFirebaseFocsAdd)) {
+      else if (cont_ADD==10 || notifyFirebaseFocsAdd) {
         change=true;
         cont_B=0;
         cont_ON=0;
@@ -397,7 +414,7 @@ void loop() {
         cont_M=0;
         cont_ADD=0;
         cont_MINUS=0;
-        notifyFirebaseFoc="";
+        notifyFirebaseFocsAdd=false;
         Serial.println("ADD!!!!");
         if (ctr_foc != -1) {
           int8_t tmp_val = Focs.getValue(ctr_foc);
@@ -422,7 +439,7 @@ void loop() {
       else if((valueADD <= 20) && (valueADD > 0)){
         cont_ADD++;
       }
-      else if (cont_MINUS==10) {
+      else if (cont_MINUS==10 || notifyFirebaseFocsMinus) {
         cont_B=0;
         cont_ON=0;
         cont_P=0;
@@ -430,7 +447,8 @@ void loop() {
         cont_ADD=0;
         cont_MINUS=0;
 
-
+        notifyFirebaseFocsMinus=false;
+        
         Serial.println("MINUS!!!!");
         if (ctr_foc != -1) {
           
@@ -499,6 +517,10 @@ void loop() {
       ctr_on = false;
       ctr_foc = -1;
       Focs.setAllInactive();
+      notifyFirebaseFoc="";
+      notifyFirebaseFocsAdd=false;
+      notifyFirebaseFocsMinus=false;
+
     }
 
   }
