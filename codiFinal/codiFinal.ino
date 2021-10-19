@@ -67,6 +67,7 @@ bool notifyFirebaseOn=false;
 String notifyFirebaseFoc="";
 bool notifyFirebaseFocsAdd=false;
 bool notifyFirebaseFocsMinus=false;
+bool writeFirebase=true;
 
 
 unsigned long sendDataPrevMillis = 0;
@@ -120,23 +121,27 @@ void ctr_numCtr(int8_t val, int8_t valFire, String ID){
      if(valFire>val){
       notifyFirebaseFocsAdd=true;
       notifyFirebaseFoc=ID;
+      writeFirebase=false;
      }
      else if(val>valFire && (val!=9 || valFire!=0)){
       Serial.println(val);
       Serial.println(valFire);
       notifyFirebaseFocsMinus=true;
       notifyFirebaseFoc=ID;
+      writeFirebase=false;
      }
    }
    else if(val==-1){
     if(valFire==5){
       notifyFirebaseFocsAdd=true;
       notifyFirebaseFoc=ID;
+      writeFirebase=false;
     }
     else if (valFire==9){
       Serial.println(valFire);
       notifyFirebaseFocsMinus=true;
       notifyFirebaseFoc=ID;
+      writeFirebase=false;
     }
  }
 }
@@ -186,7 +191,7 @@ void streamCallback(FirebaseStream data)
     int8_t valFire=resultNumCtr_2.to<int>();
     String ID=ID_P;
     ctr_numCtr(val,valFire, ID);
-}
+  }
   json->clear();
   
 }
@@ -200,7 +205,9 @@ void streamTimeoutCallback(bool timeout)
     Serial.printf("error code: %d, reason: %s\n\n", stream.httpCode(), stream.errorReason().c_str());
 }
 
-
+void func_writeFirebase(String ruta, int8_t value){
+  Firebase.RTDB.setIntAsync(&fb_write, ruta, value);
+}
 void setup() {
   // put your setup code here, to run once:
 
@@ -290,7 +297,7 @@ void loop() {
       vitro_ON=true;
       cont_ON=0;
 
-      
+      func_writeFirebase("/user1/vitro2545/on", 1);
       
       digitalWrite(RELE_ON,LOW);
       delay(900);
@@ -306,6 +313,7 @@ void loop() {
     else if(ctr_on && vitro_ON && cont_ON==10){
       cont_ON=0;
       vitro_ON=false;
+      func_writeFirebase("/user1/vitro2545/on", 0);
       Serial.println("OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFFFFFFFFFFF");
       digitalWrite(RELE_ON,LOW);
       delay(900);
@@ -488,11 +496,6 @@ void loop() {
       if((ctr_foc==-1) && !change && ((millis()-vitroOnOff)>= 9000)){
         Serial.println("aix");
         vitro_ON=false;
-        //Serial.println(vitroOnOff);
-        //Serial.print(millis());
-
-
-
       }
       //si hi ha un foc seleccionat i cap canvi, es mira si han passat 9 seg
       else if(ctr_foc!=-1 && !change && (millis()-selFoc>= 9000)){
@@ -509,7 +512,6 @@ void loop() {
     }
     //per apagar la vitro
     else if (!vitro_ON) {
-      //Serial.println("off");
       //reset de variables ctr
       change=false;
       vitroOnOff=0;
