@@ -429,10 +429,30 @@ void loop() {
           if (tmp_val == -1) {
             Focs.setActive(ctr_foc, 5);
             Serial.println("5");
+            if(writeFirebase){
+              String ruta_write="/user1/vitro2545/num_control/";
+              ruta_write.concat(ctr_foc);
+              ruta_write.concat("_state");
+              Serial.println(ruta_write);
+              func_writeFirebase(ruta_write, 5);
+            }
+            else{
+              writeFirebase=true;
+            }
           }
           else if (tmp_val != 9) {
             Focs.setActive(ctr_foc, tmp_val + 1);
             Serial.println(tmp_val + 1);
+            if(writeFirebase){
+              String ruta_write="/user1/vitro2545/num_control/";
+              ruta_write.concat(ctr_foc);
+              ruta_write.concat("_state");
+              Serial.println(ruta_write);
+              func_writeFirebase(ruta_write, tmp_val+1);
+            }
+            else{
+              writeFirebase=true;
+            }
           }
 
           digitalWrite(RELE_ADD,LOW);
@@ -469,10 +489,31 @@ void loop() {
           if (tmp_val == -1 || tmp_val == 0 ) {
             Serial.println("9");
             Focs.setActive(ctr_foc, 9);
+
+            if(writeFirebase){
+              String ruta_write="/user1/vitro2545/num_control/";
+              ruta_write.concat(ctr_foc);
+              ruta_write.concat("_state");
+              Serial.println(ruta_write);
+              func_writeFirebase(ruta_write, 9);
+            }
+            else{
+              writeFirebase=true;
+            }
           }
           else {
             Serial.println(tmp_val - 1);
             Focs.setActive(ctr_foc, tmp_val - 1);
+            if(writeFirebase){
+              String ruta_write="/user1/vitro2545/num_control/";
+              ruta_write.concat(ctr_foc);
+              ruta_write.concat("_state");
+              Serial.println(ruta_write);
+              func_writeFirebase(ruta_write, tmp_val-1);
+            }
+            else{
+              writeFirebase=true;
+            }
           }
           int8_t counter_chng=0;
           for(int i=0; i<3; i++){
@@ -522,6 +563,7 @@ void loop() {
       notifyFirebaseFoc="";
       notifyFirebaseFocsAdd=false;
       notifyFirebaseFocsMinus=false;
+      writeFirebase=true;
 
     }
 
