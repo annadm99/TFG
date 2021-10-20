@@ -68,6 +68,7 @@ String notifyFirebaseFoc="";
 bool notifyFirebaseFocsAdd=false;
 bool notifyFirebaseFocsMinus=false;
 bool writeFirebase=true;
+bool timer_0_state=false;
 
 
 unsigned long sendDataPrevMillis = 0;
@@ -78,17 +79,32 @@ class foc {
   private:
     String tamany;
     int8_t valor;
+    unsigned long timer_f;
+    unsigned long timer_i;
+    
   public:
     //definicio del foc
     foc(String tamany) {
       this->tamany = tamany;
       this->valor = -1;
+      this->timer_f=0;
+      this->timer_i=0;
     }
     int8_t getValue() {
       return valor;
     }
     void updateValue(int8_t valor) {
       this->valor = valor;
+    }
+    void setTimer(unsigned long value_i, unsigned long value_f){
+      this->timer_i=value_i;
+      this->timer_f=value_f;
+    }
+    unsigned long getTimerF(){
+      return this->timer_f;
+    }
+    unsigned long getTimerI(){
+      return this->timer_i;
     }
 };
 
@@ -109,6 +125,15 @@ class focs {
       for (int i = 0; i < 3; i++) {
         array_focs[i].updateValue(-1);
       }
+    }
+    void setTimer(int8_t ID, unsigned long value_i, unsigned long value_f){
+      array_focs[ID].setTimer(value_i, value_f);
+    }
+    unsigned long getValueTimerI (int8_t ID){
+      return array_focs[ID].getTimerI();
+    }
+    unsigned long getValueTimerF (int8_t ID){
+      return array_focs[ID].getTimerF();
     }
 };
 
@@ -163,21 +188,50 @@ void streamCallback(FirebaseStream data)
 
   FirebaseJsonData resultNumCtr_2;
   json->get(resultNumCtr_2, "/2_state");
+
+  FirebaseJsonData valueTimer;
+  json->get(valueTimer, "/value");
+
+
+  if(valueTimer.success){ //timer
+    String dataPath=data.dataPath().c_str();
+    if(dataPath=="/timer/0_state"){ 
+      Serial.println("TIMEEER");
+      int8_t valueTimerInt= (valueTimer.to<String>()).toInt();
+      unsigned long value_f = valueTimerInt * 60000; // min --> millis
+      Serial.println();
+      timer_0_state=true;
+      Focs.setTimer(0, millis(), value_f );
+    }
+  }
   
+  //si canvia algun on
   if (resultOn.success)
   {
     //Print its content e.g.string, int, double, bool whereas object, array and null also can access as string
-    Serial.println("soc onnnnn");
-    if(vitro_ON!=resultOn.to<int>()){
+    
+    String dataPath=data.dataPath().c_str();
+    //Serial.println(dataPath);
+    /*if(dataPath=="/timer/0_state"){ //timer
+      Serial.println("estic en timer");
+      unsigned long value_f = resultOn.to<long>() * 60000; // min --> millis
+      timer_0_state=true;
+      Focs.setTimer(0, millis(), value_f );
+    }*/
+    //si canvia l'on general de la vitro
+    if(dataPath=="/" && vitro_ON!=resultOn.to<int>()){
       notifyFirebaseOn=true;
     }
   }
-  if(resultNumCtr_0.success){ //mirar datapath data.dataPath().c_str()
-   
-   int8_t val=Focs.getValue(0);
-   int8_t valFire=resultNumCtr_0.to<int>();
-   String ID=ID_B;
-   ctr_numCtr(val, valFire, ID);
+  //si canvia algun 0_state
+  if(resultNumCtr_0.success){ //mirar datapath data.dataPath().c_str()  
+     Serial.println("SOC JOOOOOO");
+     
+     int8_t val=Focs.getValue(0);
+     int8_t valFire=resultNumCtr_0.to<int>();
+     String ID=ID_B;
+     ctr_numCtr(val, valFire, ID);
+
 
   }
   if(resultNumCtr_1.success){
@@ -192,6 +246,7 @@ void streamCallback(FirebaseStream data)
     String ID=ID_P;
     ctr_numCtr(val,valFire, ID);
   }
+
   json->clear();
   
 }
@@ -328,6 +383,7 @@ void loop() {
       vitroOnOff=millis();
       notifyFirebaseOn=false;
     }
+
     //si esta oberta
     if (vitro_ON) {
 
@@ -494,7 +550,6 @@ void loop() {
               String ruta_write="/user1/vitro2545/num_control/";
               ruta_write.concat(ctr_foc);
               ruta_write.concat("_state");
-              Serial.println(ruta_write);
               func_writeFirebase(ruta_write, 9);
             }
             else{
@@ -508,7 +563,6 @@ void loop() {
               String ruta_write="/user1/vitro2545/num_control/";
               ruta_write.concat(ctr_foc);
               ruta_write.concat("_state");
-              Serial.println(ruta_write);
               func_writeFirebase(ruta_write, tmp_val-1);
             }
             else{
@@ -550,6 +604,26 @@ void loop() {
         vitroOnOff=0;
       }
 
+      //mirar els 3 timers
+      if(timer_0_state){ //si el foc gran te timer
+        unsigned long vI=Focs.getValueTimerI(0);
+        unsigned long vF=Focs.getValueTimerF(0);
+        
+        if(millis()-vI>=vF){ //si ha passat el temps
+          Serial.println("holiiii");
+          timer_0_state=false;
+          String ruta_write="/user1/vitro2545/timer/0_state/value";
+          func_writeFirebase(ruta_write, 0);
+          ruta_write="/user1/vitro2545/timer/0_state/on";
+          func_writeFirebase(ruta_write, 0);
+        }
+        else{ 
+          long vTempsPassat=vF-(millis()-vI);
+          int valorFirebase=(vTempsPassat/60000)+1;
+          String ruta_write="/user1/vitro2545/timer/0_state/value";
+          func_writeFirebase(ruta_write, valorFirebase);
+        }
+      }
     }
     //per apagar la vitro
     else if (!vitro_ON) {
