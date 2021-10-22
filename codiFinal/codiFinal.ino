@@ -276,16 +276,21 @@ void func_writeFirebase(String ruta, int8_t value){
 void ctrTimers(int8_t ID, unsigned long vF, unsigned long vI){
   if(millis()-vI>=vF){ //si ha passat el temps, resetejem
     Serial.println("holiiii");
+    uint8_t pin;
     if(ID==0){
       timer_0_state=false;
+      pin=RELE_B;
     }
     else if(ID==1){
       timer_1_state=false;
+      pin=RELE_M;
     }
     else{
       timer_2_state=false;
+      pin=RELE_P;
     }
-    
+
+    //actualitza la firebase
     String ruta_write="/user1/vitro2545/timer/";
     ruta_write.concat(ID);
     ruta_write.concat("_state/value");
@@ -295,6 +300,15 @@ void ctrTimers(int8_t ID, unsigned long vF, unsigned long vI){
     ruta_write.concat(ID);
     ruta_write.concat("_state/on");
     func_writeFirebase(ruta_write, 0);
+
+    f_selecFoc(ID, pin);
+    
+    int8_t temp_value= Focs.getValue(ID);
+    for(int i=0; i<temp_value; i++){
+      f_minus();
+      delay(500);
+    }
+    
   }
   else{ 
     long vTempsPassat=vF-(millis()-vI);
@@ -305,6 +319,140 @@ void ctrTimers(int8_t ID, unsigned long vF, unsigned long vI){
     func_writeFirebase(ruta_write, valorFirebase);
   }
 }
+
+
+//funcio per a seleccionar el foc i activar el rele
+void f_selecFoc(int8_t id, uint8_t pin){
+  ctr_foc = id;
+
+  notifyFirebaseFoc="";
+  
+  cont_M=0;
+  cont_ON=0;
+  cont_P=0;
+  cont_B=0;
+  cont_ADD=0;
+  cont_MINUS=0;
+  
+  digitalWrite(pin,LOW);
+  delay(900);
+  digitalWrite(pin,HIGH);
+  
+  selFoc=millis();
+}
+
+//reset de les variables i restar un nivell al foc
+void f_minus(){
+  cont_B=0;
+  cont_ON=0;
+  cont_P=0;
+  cont_M=0;
+  cont_ADD=0;
+  cont_MINUS=0;
+
+  notifyFirebaseFocsMinus=false;
+  
+  Serial.println("MINUS!!!!");
+  if (ctr_foc != -1) {
+    
+    digitalWrite(RELE_MINUS,LOW);
+    delay(400);
+    digitalWrite(RELE_MINUS,HIGH);
+    
+    int8_t tmp_val = Focs.getValue(ctr_foc);
+    change=true;
+    if (tmp_val == -1 || tmp_val == 0 ) {
+      Serial.println("9");
+      Focs.setActive(ctr_foc, 9);
+
+      if(writeFirebase){
+        String ruta_write="/user1/vitro2545/num_control/";
+        ruta_write.concat(ctr_foc);
+        ruta_write.concat("_state");
+        func_writeFirebase(ruta_write, 9);
+      }
+      else{
+        writeFirebase=true;
+      }
+    }
+    else {
+      Serial.println(tmp_val - 1);
+      Focs.setActive(ctr_foc, tmp_val - 1);
+      if(writeFirebase){
+        String ruta_write="/user1/vitro2545/num_control/";
+        ruta_write.concat(ctr_foc);
+        ruta_write.concat("_state");
+        func_writeFirebase(ruta_write, tmp_val-1);
+      }
+      else{
+        writeFirebase=true;
+      }
+    }
+    //mirar si els 3 focs estan a 0
+    int8_t counter_chng=0;
+    for(int i=0; i<3; i++){
+      int8_t tmp_val2 = Focs.getValue(i);
+      if(tmp_val2 == -1 || tmp_val2 == 0){
+        counter_chng++;
+      }
+    }
+    if(counter_chng==3){
+      change=false;
+    }
+    selFoc=millis();
+  }
+}
+
+//reset de les variables i afeguir un nivell al foc
+void f_add(){
+  change=true;
+  cont_B=0;
+  cont_ON=0;
+  cont_P=0;
+  cont_M=0;
+  cont_ADD=0;
+  cont_MINUS=0;
+  notifyFirebaseFocsAdd=false;
+  Serial.println("ADD!!!!");
+  if (ctr_foc != -1) {
+    int8_t tmp_val = Focs.getValue(ctr_foc);
+    if (tmp_val == -1) {
+      Focs.setActive(ctr_foc, 5);
+      Serial.println("5");
+      if(writeFirebase){
+        String ruta_write="/user1/vitro2545/num_control/";
+        ruta_write.concat(ctr_foc);
+        ruta_write.concat("_state");
+        Serial.println(ruta_write);
+        func_writeFirebase(ruta_write, 5);
+      }
+      else{
+        writeFirebase=true;
+      }
+    }
+    else if (tmp_val != 9) {
+      Focs.setActive(ctr_foc, tmp_val + 1);
+      Serial.println(tmp_val + 1);
+      if(writeFirebase){
+        String ruta_write="/user1/vitro2545/num_control/";
+        ruta_write.concat(ctr_foc);
+        ruta_write.concat("_state");
+        Serial.println(ruta_write);
+        func_writeFirebase(ruta_write, tmp_val+1);
+      }
+      else{
+        writeFirebase=true;
+      }
+    }
+
+    digitalWrite(RELE_ADD,LOW);
+    delay(400);
+    digitalWrite(RELE_ADD,HIGH);
+
+    selFoc=millis();
+  }
+}
+
 void setup() {
   // put your setup code here, to run once:
 
@@ -439,24 +587,7 @@ void loop() {
 
       //si es selecciona el foc petit
       if (cont_P==10 || notifyFirebaseFoc==ID_P) {
-        ctr_foc = 2;
-
-        notifyFirebaseFoc="";
-        
-        cont_P=0;
-        cont_ON=0;
-        cont_M=0;
-        cont_B=0;
-        cont_ADD=0;
-        cont_MINUS=0;
-
-        Serial.println("P!!!!");
-
-        digitalWrite(RELE_P,LOW);
-        delay(900);
-        digitalWrite(RELE_P,HIGH);
-
-        selFoc=millis();
+        f_selecFoc(2, RELE_P);
       }
       else if((valueP <= 20) && (valueP > 0)){
         cont_P++;
@@ -464,24 +595,7 @@ void loop() {
 
       //si es selecciona el foc mitja
       else if (cont_M==10 || notifyFirebaseFoc==ID_M) {
-        ctr_foc = 1;
-
-        notifyFirebaseFoc="";
-        
-        cont_M=0;
-        cont_ON=0;
-        cont_P=0;
-        cont_B=0;
-        cont_ADD=0;
-        cont_MINUS=0;
-
-        Serial.println("M!!!!");
-        
-        digitalWrite(RELE_M,LOW);
-        delay(900);
-        digitalWrite(RELE_M,HIGH);
-        
-        selFoc=millis();
+        f_selecFoc(1, RELE_M);
       }
       else if((valueM <= 20) && (valueM > 0) ){
         cont_M++;
@@ -489,140 +603,21 @@ void loop() {
 
       //si es selecciona el foc gran
       else if (cont_B==10 || notifyFirebaseFoc==ID_B) {
-        ctr_foc = 0;
-
-        cont_B=0;
-        cont_ON=0;
-        cont_P=0;
-        cont_M=0;
-        cont_ADD=0;
-        cont_MINUS=0;
-
-        notifyFirebaseFoc="";
-        
-        Serial.println("B!!!!");
-
-        digitalWrite(RELE_B,LOW);
-        delay(900);
-        digitalWrite(RELE_B,HIGH);
-        
-        selFoc=millis();
+        f_selecFoc(0, RELE_B);
       }
       else if((valueB <= 20) && (valueB > 0)){
         cont_B++;
       }
       //si es pitja el +
       else if (cont_ADD==10 || notifyFirebaseFocsAdd) {
-        change=true;
-        cont_B=0;
-        cont_ON=0;
-        cont_P=0;
-        cont_M=0;
-        cont_ADD=0;
-        cont_MINUS=0;
-        notifyFirebaseFocsAdd=false;
-        Serial.println("ADD!!!!");
-        if (ctr_foc != -1) {
-          int8_t tmp_val = Focs.getValue(ctr_foc);
-          if (tmp_val == -1) {
-            Focs.setActive(ctr_foc, 5);
-            Serial.println("5");
-            if(writeFirebase){
-              String ruta_write="/user1/vitro2545/num_control/";
-              ruta_write.concat(ctr_foc);
-              ruta_write.concat("_state");
-              Serial.println(ruta_write);
-              func_writeFirebase(ruta_write, 5);
-            }
-            else{
-              writeFirebase=true;
-            }
-          }
-          else if (tmp_val != 9) {
-            Focs.setActive(ctr_foc, tmp_val + 1);
-            Serial.println(tmp_val + 1);
-            if(writeFirebase){
-              String ruta_write="/user1/vitro2545/num_control/";
-              ruta_write.concat(ctr_foc);
-              ruta_write.concat("_state");
-              Serial.println(ruta_write);
-              func_writeFirebase(ruta_write, tmp_val+1);
-            }
-            else{
-              writeFirebase=true;
-            }
-          }
-
-          digitalWrite(RELE_ADD,LOW);
-          delay(400);
-          digitalWrite(RELE_ADD,HIGH);
-
-          selFoc=millis();
-        }
-        
-
+        f_add();
       }
       else if((valueADD <= 20) && (valueADD > 0)){
         cont_ADD++;
       }
+      //si es pitja el -
       else if (cont_MINUS==10 || notifyFirebaseFocsMinus) {
-        cont_B=0;
-        cont_ON=0;
-        cont_P=0;
-        cont_M=0;
-        cont_ADD=0;
-        cont_MINUS=0;
-
-        notifyFirebaseFocsMinus=false;
-        
-        Serial.println("MINUS!!!!");
-        if (ctr_foc != -1) {
-          
-          digitalWrite(RELE_MINUS,LOW);
-          delay(400);
-          digitalWrite(RELE_MINUS,HIGH);
-          
-          int8_t tmp_val = Focs.getValue(ctr_foc);
-          change=true;
-          if (tmp_val == -1 || tmp_val == 0 ) {
-            Serial.println("9");
-            Focs.setActive(ctr_foc, 9);
-
-            if(writeFirebase){
-              String ruta_write="/user1/vitro2545/num_control/";
-              ruta_write.concat(ctr_foc);
-              ruta_write.concat("_state");
-              func_writeFirebase(ruta_write, 9);
-            }
-            else{
-              writeFirebase=true;
-            }
-          }
-          else {
-            Serial.println(tmp_val - 1);
-            Focs.setActive(ctr_foc, tmp_val - 1);
-            if(writeFirebase){
-              String ruta_write="/user1/vitro2545/num_control/";
-              ruta_write.concat(ctr_foc);
-              ruta_write.concat("_state");
-              func_writeFirebase(ruta_write, tmp_val-1);
-            }
-            else{
-              writeFirebase=true;
-            }
-          }
-          int8_t counter_chng=0;
-          for(int i=0; i<3; i++){
-            int8_t tmp_val2 = Focs.getValue(i);
-            if(tmp_val2 == -1 || tmp_val2 == 0){
-              counter_chng++;
-            }
-          }
-          if(counter_chng==3){
-            change=false;
-          }
-          selFoc=millis();
-        }
+        f_minus();
 
       }
       else if((valueMINUS <= 20) && (valueMINUS > 0)){
@@ -633,6 +628,8 @@ void loop() {
       if((ctr_foc==-1) && !change && ((millis()-vitroOnOff)>= 9000)){
         Serial.println("aix");
         vitro_ON=false;
+
+        func_writeFirebase("/user1/vitro2545/on", 0);
       }
       //si hi ha un foc seleccionat i cap canvi, es mira si han passat 9 seg
       else if(ctr_foc!=-1 && !change && (millis()-selFoc>= 9000)){
