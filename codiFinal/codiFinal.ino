@@ -37,6 +37,8 @@
 #define RELE_M 16
 #define RELE_B 17
 
+#define PIN_ALARM 5
+
 const String ID_B = "state_0";
 const String ID_M = "state_1";
 const String ID_P = "state_2";
@@ -68,6 +70,8 @@ String notifyFirebaseFoc="";
 bool notifyFirebaseFocsAdd=false;
 bool notifyFirebaseFocsMinus=false;
 bool writeFirebase=true;
+
+//per a saber si hi ha un timer setejat
 bool timer_0_state=false;
 bool timer_1_state=false;
 bool timer_2_state=false;
@@ -308,7 +312,13 @@ void ctrTimers(int8_t ID, unsigned long vF, unsigned long vI){
       f_minus();
       delay(500);
     }
-    
+    //fer sonar el buzzer
+    for(int i=0; i<3; i++){
+      digitalWrite(PIN_ALARM, HIGH);    
+      delay(1000);  
+      digitalWrite(PIN_ALARM, LOW);
+      delay(1000);
+    }
   }
   else{ 
     long vTempsPassat=vF-(millis()-vI);
@@ -479,7 +489,9 @@ void setup() {
   digitalWrite(RELE_M,HIGH);
   digitalWrite(RELE_B,HIGH);
 
-
+  //configuracio del pin de l'alarma
+  pinMode(PIN_ALARM, OUTPUT);
+  
   
   while (WiFi.status() != WL_CONNECTED)
   {
@@ -673,6 +685,9 @@ void loop() {
       notifyFirebaseFocsAdd=false;
       notifyFirebaseFocsMinus=false;
       writeFirebase=true;
+      timer_0_state=false;
+      timer_1_state=false;
+      timer_2_state=false;
 
     }
 
