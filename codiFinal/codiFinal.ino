@@ -1,43 +1,5 @@
-//Include WiFi library
-#include <WiFi.h>
-
-//Include Firebase library (this library)
-#include <Firebase_ESP_Client.h>
-
-//Provide the RTDB payload printing info and other helper functions.
-#include <addons/RTDBHelper.h>
-//Provide the token generation process info.
-#include <addons/TokenHelper.h>
-
-#define DATABASE_URL "https://smart-hob-a3dfc-default-rtdb.europe-west1.firebasedatabase.app/"
-
-#define API_KEY "AIzaSyCYmv1rylWQUXyskwY6UBdKR4L8Qc_ZmtM"
-#define USER_EMAIL "anna.dot@hotmail.es"
-#define USER_PASSWORD "admin1234"
-
-#define WIFI_SSID "Xiaomi_B031"
-#define WIFI_PASSWORD "Casamarinera2"
-
-
-
-
-//sensors capacitius
-#define PIN_ON T4 //T0 24 //4
-#define PIN_ADD T6 //T7 27
-#define PIN_MINUS T5 //T3 15
-#define PIN_P T3 //T4 13
-#define PIN_M T7 //T5 12
-#define PIN_B T0 //T6 14
-
-//pins per a controlar els reles
-#define RELE_ON 26
-#define RELE_ADD 25
-#define RELE_MINUS 33
-#define RELE_P 32
-#define RELE_M 16
-#define RELE_B 17
-
-#define PIN_ALARM 5
+#include "codiFinal.h"
+#include "focs.h"
 
 const String ID_B = "state_0";
 const String ID_M = "state_1";
@@ -81,387 +43,30 @@ unsigned long sendDataPrevMillis = 0;
 unsigned long vitroOnOff = 0;
 unsigned long selFoc = 0;
 
-class foc {
-  private:
-    String tamany;
-    int8_t valor;
-    unsigned long timer_f;
-    unsigned long timer_i;
-    
-  public:
-    //definicio del foc
-    foc(String tamany) {
-      this->tamany = tamany;
-      this->valor = -1;
-      this->timer_f=0;
-      this->timer_i=0;
-    }
-    int8_t getValue() {
-      return valor;
-    }
-    void updateValue(int8_t valor) {
-      this->valor = valor;
-    }
-    void setTimer(unsigned long value_i, unsigned long value_f){
-      this->timer_i=value_i;
-      this->timer_f=value_f;
-    }
-    unsigned long getTimerF(){
-      return this->timer_f;
-    }
-    unsigned long getTimerI(){
-      return this->timer_i;
-    }
-};
-
-class focs {
-  private:
-    foc array_focs[3] = {foc(ID_B), foc(ID_M),foc(ID_P)};
-  public:
-    void setActive(int8_t id, int8_t value) {
-      array_focs[id].updateValue(value);
-    }
-    int8_t getValue(int8_t id) {
-      return array_focs[id].getValue();
-    }
-    void setInactive(int8_t id) {
-      array_focs[id].updateValue(-1);
-    }
-    void setAllInactive() {
-      for (int i = 0; i < 3; i++) {
-        array_focs[i].updateValue(-1);
-        array_focs[i].setTimer(0, 0);
-      }
-    }
-    void setTimer(int8_t ID, unsigned long value_i, unsigned long value_f){
-      array_focs[ID].setTimer(value_i, value_f);
-    }
-    unsigned long getValueTimerI (int8_t ID){
-      return array_focs[ID].getTimerI();
-    }
-    unsigned long getValueTimerF (int8_t ID){
-      return array_focs[ID].getTimerF();
-    }
-};
-
 //creacio dels focs
 focs Focs = focs();
 
 //assignacio corresponent del nivell del foc
-void ctr_numCtr(int8_t val, int8_t valFire, String ID){
-   if(val!=-1){
-     if(valFire>val){
-      notifyFirebaseFocsAdd=true;
-      notifyFirebaseFoc=ID;
-      writeFirebase=false;
-     }
-     else if(val>valFire && (val!=9 || valFire!=0)){
-      Serial.println(val);
-      Serial.println(valFire);
-      notifyFirebaseFocsMinus=true;
-      notifyFirebaseFoc=ID;
-      writeFirebase=false;
-     }
-   }
-   else if(val==-1){
-    if(valFire==5){
-      notifyFirebaseFocsAdd=true;
-      notifyFirebaseFoc=ID;
-      writeFirebase=false;
-    }
-    else if (valFire==9){
-      Serial.println(valFire);
-      notifyFirebaseFocsMinus=true;
-      notifyFirebaseFoc=ID;
-      writeFirebase=false;
-    }
- }
-}
-
-void streamCallback(FirebaseStream data)
-{
-  FirebaseJson *json = data.to<FirebaseJson *>();
-  //Print all object data
-  json->toString(Serial, true);
- 
-  FirebaseJsonData resultOn;
-  json->get(resultOn, "/on");
-  
-  FirebaseJsonData resultNumCtr_0;
-  json->get(resultNumCtr_0, "/0_state");
-
-  FirebaseJsonData resultNumCtr_1;
-  json->get(resultNumCtr_1, "/1_state");
-
-  FirebaseJsonData resultNumCtr_2;
-  json->get(resultNumCtr_2, "/2_state");
-
-  FirebaseJsonData valueTimer;
-  json->get(valueTimer, "/value");
-
-
-
-  //si canvia algun on
-  if (resultOn.success)
-  {
-    //Print its content e.g.string, int, double, bool whereas object, array and null also can access as string
-    
-    String dataPath=data.dataPath().c_str();
-    //si canvia l'on general de la vitro
-    if(dataPath=="/" && vitro_ON!=resultOn.to<int>()){
-      notifyFirebaseOn=true;
-    }
-  }
-  //si canvia algun 0_state
-  if(resultNumCtr_0.success){ //mirar datapath data.dataPath().c_str()  
-     Serial.println("SOC JOOOOOO");
-     
-     int8_t val=Focs.getValue(0);
-     int8_t valFire=resultNumCtr_0.to<int>();
-     String ID=ID_B;
-     ctr_numCtr(val, valFire, ID);
-
-
-  }
-  if(resultNumCtr_1.success){
-    int8_t val=Focs.getValue(1);
-    int8_t valFire=resultNumCtr_1.to<int>();
-    String ID=ID_M;
-    ctr_numCtr(val, valFire, ID);
-  }
-  if(resultNumCtr_2.success){
-    int8_t val=Focs.getValue(2);
-    int8_t valFire=resultNumCtr_2.to<int>();
-    String ID=ID_P;
-    ctr_numCtr(val,valFire, ID);
-  }
-
-  if(valueTimer.success){ //timer
-    String dataPath=data.dataPath().c_str();
-    int8_t id_tmp;
-    if(dataPath=="/timer/0_state"){ 
-      id_tmp=0;
-      //Serial.println("TIMEEER");
-      //Serial.println();
-      timer_0_state=true;
-    }
-    else if(dataPath=="/timer/1_state"){
-      id_tmp=1;
-      timer_1_state=true;
-    }
-    else{
-      id_tmp=2;
-      timer_2_state=true;
-    }
-    int8_t valueTimerInt= (valueTimer.to<String>()).toInt();
-    unsigned long value_f = valueTimerInt * 60000; // min --> millis
-    Focs.setTimer(id_tmp, millis(), value_f );  
-  }
-  
-  json->clear();
-  
-}
-
-void streamTimeoutCallback(bool timeout)
-{
-  if (timeout)
-    Serial.println("stream timed out, resuming...\n");
-
-  if (!stream.httpConnected())
-    Serial.printf("error code: %d, reason: %s\n\n", stream.httpCode(), stream.errorReason().c_str());
-}
+void ctr_numCtr(int8_t val, int8_t valFire, String ID);
 
 //per escriure de forma asíncrona a la firebase
-void func_writeFirebase(String ruta, int8_t value){
-  Firebase.RTDB.setIntAsync(&fb_write, ruta, value);
-}
+void func_writeFirebase(String ruta, int8_t value);
 
-//per comprovar si ha passat el temps corresponent
-void ctrTimers(int8_t ID, unsigned long vF, unsigned long vI){
-  if(millis()-vI>=vF){ //si ha passat el temps, resetejem
-    Serial.println("holiiii");
-    uint8_t pin;
-    if(ID==0){
-      timer_0_state=false;
-      pin=RELE_B;
-    }
-    else if(ID==1){
-      timer_1_state=false;
-      pin=RELE_M;
-    }
-    else{
-      timer_2_state=false;
-      pin=RELE_P;
-    }
-
-    //actualitza la firebase
-    String ruta_write="/user1/vitro2545/timer/";
-    ruta_write.concat(ID);
-    ruta_write.concat("_state/value");
-    func_writeFirebase(ruta_write, 0);
-    
-    ruta_write="/user1/vitro2545/timer/";
-    ruta_write.concat(ID);
-    ruta_write.concat("_state/on");
-    func_writeFirebase(ruta_write, 0);
-
-    f_selecFoc(ID, pin);
-    
-    int8_t temp_value= Focs.getValue(ID);
-    for(int i=0; i<temp_value; i++){
-      f_minus();
-      delay(500);
-    }
-    //fer sonar el buzzer
-    for(int i=0; i<3; i++){
-      digitalWrite(PIN_ALARM, HIGH);    
-      delay(1000);  
-      digitalWrite(PIN_ALARM, LOW);
-      delay(1000);
-    }
-  }
-  else{ 
-    long vTempsPassat=vF-(millis()-vI);
-    int valorFirebase=(vTempsPassat/60000)+1;
-    String ruta_write="/user1/vitro2545/timer/";
-    ruta_write.concat(ID);
-    ruta_write.concat("_state/value");
-    func_writeFirebase(ruta_write, valorFirebase);
-  }
-}
-
+//gestio dels canvis en la firebase
+void streamCallback(FirebaseStream data);
+void streamTimeoutCallback(bool timeout);
 
 //funcio per a seleccionar el foc i activar el rele
-void f_selecFoc(int8_t id, uint8_t pin){
-  ctr_foc = id;
+void f_selecFoc(int8_t id, uint8_t pin);
 
-  notifyFirebaseFoc="";
-  
-  cont_M=0;
-  cont_ON=0;
-  cont_P=0;
-  cont_B=0;
-  cont_ADD=0;
-  cont_MINUS=0;
-  
-  digitalWrite(pin,LOW);
-  delay(900);
-  digitalWrite(pin,HIGH);
-  
-  selFoc=millis();
-}
+//per comprovar si ha passat el temps corresponent dels timers
+void ctrTimers(int8_t ID, unsigned long vF, unsigned long vI);
 
-//reset de les variables i restar un nivell al foc
-void f_minus(){
-  cont_B=0;
-  cont_ON=0;
-  cont_P=0;
-  cont_M=0;
-  cont_ADD=0;
-  cont_MINUS=0;
+//per restar un nivell al foc
+void f_minus();
 
-  notifyFirebaseFocsMinus=false;
-  
-  Serial.println("MINUS!!!!");
-  if (ctr_foc != -1) {
-    
-    digitalWrite(RELE_MINUS,LOW);
-    delay(400);
-    digitalWrite(RELE_MINUS,HIGH);
-    
-    int8_t tmp_val = Focs.getValue(ctr_foc);
-    change=true;
-    if (tmp_val == -1 || tmp_val == 0 ) {
-      Serial.println("9");
-      Focs.setActive(ctr_foc, 9);
-
-      if(writeFirebase){
-        String ruta_write="/user1/vitro2545/num_control/";
-        ruta_write.concat(ctr_foc);
-        ruta_write.concat("_state");
-        func_writeFirebase(ruta_write, 9);
-      }
-      else{
-        writeFirebase=true;
-      }
-    }
-    else {
-      Serial.println(tmp_val - 1);
-      Focs.setActive(ctr_foc, tmp_val - 1);
-      if(writeFirebase){
-        String ruta_write="/user1/vitro2545/num_control/";
-        ruta_write.concat(ctr_foc);
-        ruta_write.concat("_state");
-        func_writeFirebase(ruta_write, tmp_val-1);
-      }
-      else{
-        writeFirebase=true;
-      }
-    }
-    //mirar si els 3 focs estan a 0
-    int8_t counter_chng=0;
-    for(int i=0; i<3; i++){
-      int8_t tmp_val2 = Focs.getValue(i);
-      if(tmp_val2 == -1 || tmp_val2 == 0){
-        counter_chng++;
-      }
-    }
-    if(counter_chng==3){
-      change=false;
-    }
-    selFoc=millis();
-  }
-}
-
-//reset de les variables i afeguir un nivell al foc
-void f_add(){
-  change=true;
-  cont_B=0;
-  cont_ON=0;
-  cont_P=0;
-  cont_M=0;
-  cont_ADD=0;
-  cont_MINUS=0;
-  notifyFirebaseFocsAdd=false;
-  Serial.println("ADD!!!!");
-  if (ctr_foc != -1) {
-    int8_t tmp_val = Focs.getValue(ctr_foc);
-    if (tmp_val == -1) {
-      Focs.setActive(ctr_foc, 5);
-      Serial.println("5");
-      if(writeFirebase){
-        String ruta_write="/user1/vitro2545/num_control/";
-        ruta_write.concat(ctr_foc);
-        ruta_write.concat("_state");
-        Serial.println(ruta_write);
-        func_writeFirebase(ruta_write, 5);
-      }
-      else{
-        writeFirebase=true;
-      }
-    }
-    else if (tmp_val != 9) {
-      Focs.setActive(ctr_foc, tmp_val + 1);
-      Serial.println(tmp_val + 1);
-      if(writeFirebase){
-        String ruta_write="/user1/vitro2545/num_control/";
-        ruta_write.concat(ctr_foc);
-        ruta_write.concat("_state");
-        Serial.println(ruta_write);
-        func_writeFirebase(ruta_write, tmp_val+1);
-      }
-      else{
-        writeFirebase=true;
-      }
-    }
-
-    digitalWrite(RELE_ADD,LOW);
-    delay(400);
-    digitalWrite(RELE_ADD,HIGH);
-
-    selFoc=millis();
-  }
-}
+//per afeguir un nivell al foc
+void f_add();
 
 void setup() {
   // put your setup code here, to run once:
@@ -691,5 +296,321 @@ void loop() {
 
     }
 
+  }
+}
+
+//assignacio corresponent del nivell del foc
+void ctr_numCtr(int8_t val, int8_t valFire, String ID){
+   if(val!=-1){
+     if(valFire>val){
+      notifyFirebaseFocsAdd=true;
+      notifyFirebaseFoc=ID;
+      writeFirebase=false;
+     }
+     else if(val>valFire && (val!=9 || valFire!=0)){
+      Serial.println(val);
+      Serial.println(valFire);
+      notifyFirebaseFocsMinus=true;
+      notifyFirebaseFoc=ID;
+      writeFirebase=false;
+     }
+   }
+   else if(val==-1){
+    if(valFire==5){
+      notifyFirebaseFocsAdd=true;
+      notifyFirebaseFoc=ID;
+      writeFirebase=false;
+    }
+    else if (valFire==9){
+      Serial.println(valFire);
+      notifyFirebaseFocsMinus=true;
+      notifyFirebaseFoc=ID;
+      writeFirebase=false;
+    }
+ }
+}
+
+//gestio dels canvis en la firebase
+void streamCallback(FirebaseStream data)
+{
+  FirebaseJson *json = data.to<FirebaseJson *>();
+  //Print all object data
+  json->toString(Serial, true);
+ 
+  FirebaseJsonData resultOn;
+  json->get(resultOn, "/on");
+  
+  FirebaseJsonData resultNumCtr_0;
+  json->get(resultNumCtr_0, "/0_state");
+
+  FirebaseJsonData resultNumCtr_1;
+  json->get(resultNumCtr_1, "/1_state");
+
+  FirebaseJsonData resultNumCtr_2;
+  json->get(resultNumCtr_2, "/2_state");
+
+  FirebaseJsonData valueTimer;
+  json->get(valueTimer, "/value");
+
+
+
+  //si canvia algun on
+  if (resultOn.success)
+  {
+    //Print its content e.g.string, int, double, bool whereas object, array and null also can access as string
+    
+    String dataPath=data.dataPath().c_str();
+    //si canvia l'on general de la vitro
+    if(dataPath=="/" && vitro_ON!=resultOn.to<int>()){
+      notifyFirebaseOn=true;
+    }
+  }
+  //si canvia algun 0_state
+  if(resultNumCtr_0.success){ //mirar datapath data.dataPath().c_str()  
+     Serial.println("SOC JOOOOOO");
+     
+     int8_t val=Focs.getValue(0);
+     int8_t valFire=resultNumCtr_0.to<int>();
+     String ID=ID_B;
+     ctr_numCtr(val, valFire, ID);
+
+
+  }
+  if(resultNumCtr_1.success){
+    int8_t val=Focs.getValue(1);
+    int8_t valFire=resultNumCtr_1.to<int>();
+    String ID=ID_M;
+    ctr_numCtr(val, valFire, ID);
+  }
+  if(resultNumCtr_2.success){
+    int8_t val=Focs.getValue(2);
+    int8_t valFire=resultNumCtr_2.to<int>();
+    String ID=ID_P;
+    ctr_numCtr(val,valFire, ID);
+  }
+
+  if(valueTimer.success){ //timer
+    String dataPath=data.dataPath().c_str();
+    int8_t id_tmp;
+    if(dataPath=="/timer/0_state"){ 
+      id_tmp=0;
+      //Serial.println("TIMEEER");
+      //Serial.println();
+      timer_0_state=true;
+    }
+    else if(dataPath=="/timer/1_state"){
+      id_tmp=1;
+      timer_1_state=true;
+    }
+    else{
+      id_tmp=2;
+      timer_2_state=true;
+    }
+    int8_t valueTimerInt= (valueTimer.to<String>()).toInt();
+    unsigned long value_f = valueTimerInt * 60000; // min --> millis
+    Focs.setTimer(id_tmp, millis(), value_f );  
+  }
+  
+  json->clear();
+  
+}
+
+//per escriure de forma asíncrona a la firebase
+void func_writeFirebase(String ruta, int8_t value){
+  Firebase.RTDB.setIntAsync(&fb_write, ruta, value);
+}
+
+void streamTimeoutCallback(bool timeout)
+{
+  if (timeout)
+    Serial.println("stream timed out, resuming...\n");
+
+  if (!stream.httpConnected())
+    Serial.printf("error code: %d, reason: %s\n\n", stream.httpCode(), stream.errorReason().c_str());
+}
+
+//funcio per a seleccionar el foc i activar el rele
+void f_selecFoc(int8_t id, uint8_t pin){
+  ctr_foc = id;
+
+  notifyFirebaseFoc="";
+  
+  cont_M=0;
+  cont_ON=0;
+  cont_P=0;
+  cont_B=0;
+  cont_ADD=0;
+  cont_MINUS=0;
+  
+  digitalWrite(pin,LOW);
+  delay(900);
+  digitalWrite(pin,HIGH);
+  
+  selFoc=millis();
+}
+
+//per restar un nivell al foc
+void f_minus(){
+  cont_B=0;
+  cont_ON=0;
+  cont_P=0;
+  cont_M=0;
+  cont_ADD=0;
+  cont_MINUS=0;
+
+  notifyFirebaseFocsMinus=false;
+  
+  Serial.println("MINUS!!!!");
+  if (ctr_foc != -1) {
+    
+    digitalWrite(RELE_MINUS,LOW);
+    delay(400);
+    digitalWrite(RELE_MINUS,HIGH);
+    
+    int8_t tmp_val = Focs.getValue(ctr_foc);
+    change=true;
+    if (tmp_val == -1 || tmp_val == 0 ) {
+      Serial.println("9");
+      Focs.setActive(ctr_foc, 9);
+
+      if(writeFirebase){
+        String ruta_write="/user1/vitro2545/num_control/";
+        ruta_write.concat(ctr_foc);
+        ruta_write.concat("_state");
+        func_writeFirebase(ruta_write, 9);
+      }
+      else{
+        writeFirebase=true;
+      }
+    }
+    else {
+      Serial.println(tmp_val - 1);
+      Focs.setActive(ctr_foc, tmp_val - 1);
+      if(writeFirebase){
+        String ruta_write="/user1/vitro2545/num_control/";
+        ruta_write.concat(ctr_foc);
+        ruta_write.concat("_state");
+        func_writeFirebase(ruta_write, tmp_val-1);
+      }
+      else{
+        writeFirebase=true;
+      }
+    }
+    //mirar si els 3 focs estan a 0
+    int8_t counter_chng=0;
+    for(int i=0; i<3; i++){
+      int8_t tmp_val2 = Focs.getValue(i);
+      if(tmp_val2 == -1 || tmp_val2 == 0){
+        counter_chng++;
+      }
+    }
+    if(counter_chng==3){
+      change=false;
+    }
+    selFoc=millis();
+  }
+}
+
+//reset de les variables i afeguir un nivell al foc
+void f_add(){
+  change=true;
+  cont_B=0;
+  cont_ON=0;
+  cont_P=0;
+  cont_M=0;
+  cont_ADD=0;
+  cont_MINUS=0;
+  notifyFirebaseFocsAdd=false;
+  Serial.println("ADD!!!!");
+  if (ctr_foc != -1) {
+    int8_t tmp_val = Focs.getValue(ctr_foc);
+    if (tmp_val == -1) {
+      Focs.setActive(ctr_foc, 5);
+      Serial.println("5");
+      if(writeFirebase){
+        String ruta_write="/user1/vitro2545/num_control/";
+        ruta_write.concat(ctr_foc);
+        ruta_write.concat("_state");
+        Serial.println(ruta_write);
+        func_writeFirebase(ruta_write, 5);
+      }
+      else{
+        writeFirebase=true;
+      }
+    }
+    else if (tmp_val != 9) {
+      Focs.setActive(ctr_foc, tmp_val + 1);
+      Serial.println(tmp_val + 1);
+      if(writeFirebase){
+        String ruta_write="/user1/vitro2545/num_control/";
+        ruta_write.concat(ctr_foc);
+        ruta_write.concat("_state");
+        Serial.println(ruta_write);
+        func_writeFirebase(ruta_write, tmp_val+1);
+      }
+      else{
+        writeFirebase=true;
+      }
+    }
+
+    digitalWrite(RELE_ADD,LOW);
+    delay(400);
+    digitalWrite(RELE_ADD,HIGH);
+
+    selFoc=millis();
+  }
+}
+
+//per comprovar si ha passat el temps corresponent dels timers
+void ctrTimers(int8_t ID, unsigned long vF, unsigned long vI){
+  if(millis()-vI>=vF){ //si ha passat el temps, resetejem
+    Serial.println("holiiii");
+    uint8_t pin;
+    if(ID==0){
+      timer_0_state=false;
+      pin=RELE_B;
+    }
+    else if(ID==1){
+      timer_1_state=false;
+      pin=RELE_M;
+    }
+    else{
+      timer_2_state=false;
+      pin=RELE_P;
+    }
+
+    //actualitza la firebase
+    String ruta_write="/user1/vitro2545/timer/";
+    ruta_write.concat(ID);
+    ruta_write.concat("_state/value");
+    func_writeFirebase(ruta_write, 0);
+    
+    ruta_write="/user1/vitro2545/timer/";
+    ruta_write.concat(ID);
+    ruta_write.concat("_state/on");
+    func_writeFirebase(ruta_write, 0);
+
+    f_selecFoc(ID, pin);
+    
+    int8_t temp_value= Focs.getValue(ID);
+    for(int i=0; i<temp_value; i++){
+      f_minus();
+      delay(500);
+    }
+    //fer sonar el buzzer
+    for(int i=0; i<3; i++){
+      digitalWrite(PIN_ALARM, HIGH);    
+      delay(1000);  
+      digitalWrite(PIN_ALARM, LOW);
+      delay(1000);
+    }
+  }
+  else{ 
+    long vTempsPassat=vF-(millis()-vI);
+    int valorFirebase=(vTempsPassat/60000)+1;
+    String ruta_write="/user1/vitro2545/timer/";
+    ruta_write.concat(ID);
+    ruta_write.concat("_state/value");
+    func_writeFirebase(ruta_write, valorFirebase);
   }
 }
