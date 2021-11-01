@@ -4,6 +4,9 @@
 //Include Firebase library (this library)
 #include <Firebase_ESP_Client.h>
 
+//llibreria per a la balança
+#include "HX711.h"
+
 //Provide the RTDB payload printing info and other helper functions.
 #include <addons/RTDBHelper.h>
 //Provide the token generation process info.
@@ -39,3 +42,7 @@
 
 //pin per controlar el buzzer
 #define PIN_ALARM 5
+
+//pins per a la balança
+#define LOADCELL_DOUT_PIN 19
+#define LOADCELL_SCK_PIN 18

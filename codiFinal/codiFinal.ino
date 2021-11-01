@@ -38,6 +38,8 @@ bool timer_0_state=false;
 bool timer_1_state=false;
 bool timer_2_state=false;
 
+//per saber si la balança esta oberta o no
+bool valueBalanOn=false;
 
 unsigned long sendDataPrevMillis = 0;
 unsigned long vitroOnOff = 0;
@@ -46,11 +48,16 @@ unsigned long selFoc = 0;
 //creacio dels focs
 focs Focs = focs();
 
+//creacio de la balança
+HX711 balanca;
+
+float balancaOldValue=0;
+
 //assignacio corresponent del nivell del foc
 void ctr_numCtr(int8_t val, int8_t valFire, String ID);
 
 //per escriure de forma asíncrona a la firebase
-void func_writeFirebase(String ruta, int8_t value);
+void func_writeFirebase(String ruta, int value);
 
 //gestio dels canvis en la firebase
 void streamCallback(FirebaseStream data);
@@ -97,7 +104,6 @@ void setup() {
   //configuracio del pin de l'alarma
   pinMode(PIN_ALARM, OUTPUT);
   
-  
   while (WiFi.status() != WL_CONNECTED)
   {
       Serial.print(".");
@@ -129,6 +135,12 @@ void setup() {
   }
   Firebase.RTDB.setStreamCallback(&stream, streamCallback, streamTimeoutCallback);
 
+  //configuracio de la balança
+  balanca.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+  balanca.set_scale(402.17f); 
+  balanca.tare();
+  balanca.power_down();
+  
   Serial.println("HOLAA");
 
 }
@@ -296,6 +308,25 @@ void loop() {
 
     }
 
+    //si la balança esta oberta
+    if(valueBalanOn){
+      //realitzar les lectures
+      //Serial.println("balançaaaa");
+      //balanca.tare();
+      Serial.println("reading-......");
+      //realitzar 10 lectures i realitzar la mitja
+      
+      float valueBalancaTemp=balanca.get_units(10);
+      Serial.println(valueBalancaTemp);
+
+      //si el valor canvia en 3gr o mes , actualitzar el valor de la Firebase
+      if(abs(valueBalancaTemp-balancaOldValue)>=2 || (round(valueBalancaTemp)==0 && balancaOldValue !=0) || abs(balancaOldValue)==1 ){
+        Serial.println("ACTUALITZOOOOOOOOOOOOOOOOOOOOOOOOOOO!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        balancaOldValue=round(valueBalancaTemp);
+        func_writeFirebase("/user1/vitro2545/balan%C3%A7a/pes/", balancaOldValue);
+      }
+    }
+
   }
 }
 
@@ -352,6 +383,8 @@ void streamCallback(FirebaseStream data)
   FirebaseJsonData valueTimer;
   json->get(valueTimer, "/value");
 
+  FirebaseJsonData valueBalanca;
+  json->get(valueBalanca, "/pes");
 
 
   //si canvia algun on
@@ -363,6 +396,22 @@ void streamCallback(FirebaseStream data)
     //si canvia l'on general de la vitro
     if(dataPath=="/" && vitro_ON!=resultOn.to<int>()){
       notifyFirebaseOn=true;
+    }
+    //si canvia l'on de la balança
+    else if(dataPath=="/balança"){
+      valueBalanOn=resultOn.to<int>();
+      Serial.println(valueBalanOn);
+      Serial.println("ON BAL");
+
+      if(!valueBalanOn){
+        balancaOldValue=0;
+        balanca.power_down();
+        Serial.println("Off BAL");
+      }
+      else{
+        balanca.power_up();
+      }
+      //notifyFirebaseOn=true;
     }
   }
   //si canvia algun 0_state
@@ -410,13 +459,19 @@ void streamCallback(FirebaseStream data)
     unsigned long value_f = valueTimerInt * 60000; // min --> millis
     Focs.setTimer(id_tmp, millis(), value_f );  
   }
+
+  //per tarar la balança
+  if(valueBalanca.success){
+    Serial.println("TARAR");
+    balanca.tare();
+  }
   
   json->clear();
   
 }
 
 //per escriure de forma asíncrona a la firebase
-void func_writeFirebase(String ruta, int8_t value){
+void func_writeFirebase(String ruta, int value){
   Firebase.RTDB.setIntAsync(&fb_write, ruta, value);
 }
 
