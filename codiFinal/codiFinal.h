@@ -1,3 +1,5 @@
+
+#include <Arduino.h>
 //Include WiFi library
 #include <WiFi.h>
 
@@ -6,6 +8,8 @@
 
 //llibreria per a la balança
 #include "HX711.h"
+
+#include <Ticker.h>
 
 //Provide the RTDB payload printing info and other helper functions.
 #include <addons/RTDBHelper.h>
@@ -18,10 +22,11 @@
 #define USER_EMAIL "anna.dot@hotmail.es"
 #define USER_PASSWORD "admin1234"
 
-#define WIFI_SSID "Xiaomi_B031"
-#define WIFI_PASSWORD "Casamarinera2"
+//#define WIFI_SSID "Xiaomi_B031"
+//#define WIFI_PASSWORD "Casamarinera2"
 
-
+#define WIFI_SSID "MOVISTAR_CD68"
+#define WIFI_PASSWORD "VDot.1975_AnnaBannana"
 
 
 //sensors capacitius

@@ -33,6 +33,8 @@ bool notifyFirebaseFocsAdd=false;
 bool notifyFirebaseFocsMinus=false;
 bool writeFirebase=true;
 
+int valorFirebaseOld[3]={-1,-1,-1};
+
 //per a saber si hi ha un timer setejat
 bool timer_0_state=false;
 bool timer_1_state=false;
@@ -45,13 +47,22 @@ unsigned long sendDataPrevMillis = 0;
 unsigned long vitroOnOff = 0;
 unsigned long selFoc = 0;
 
+TaskHandle_t TaskPesar_Handler;
+unsigned long millisTaskPesar=0;
+TaskHandle_t TaskPesAct_Handler;
+
 //creacio dels focs
 focs Focs = focs();
 
 //creacio de la balança
 HX711 balanca;
 
-float balancaOldValue=0;
+
+float balancaOldValue=-1;
+float valueBalanca=0;
+bool tarar_bal=false;
+
+int temps_T_counter=0;
 
 //assignacio corresponent del nivell del foc
 void ctr_numCtr(int8_t val, int8_t valFire, String ID);
@@ -61,7 +72,7 @@ void func_writeFirebase(String ruta, int value);
 
 //gestio dels canvis en la firebase
 void streamCallback(FirebaseStream data);
-void streamTimeoutCallback(bool timeout);
+void streamTimeoutCallback(bool timeout); 
 
 //funcio per a seleccionar el foc i activar el rele
 void f_selecFoc(int8_t id, uint8_t pin);
@@ -71,6 +82,11 @@ void ctrTimers(int8_t ID, unsigned long vF, unsigned long vI);
 
 //per restar un nivell al foc
 void f_minus();
+
+void f_minus_t(int repeat);
+
+Ticker ticker_temps;
+Ticker ticker_rele;
 
 //per afeguir un nivell al foc
 void f_add();
@@ -139,8 +155,19 @@ void setup() {
   balanca.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
   balanca.set_scale(402.17f); 
   balanca.tare();
-  balanca.power_down();
+  //balanca.power_down();
+
+  /*xTaskCreatePinnedToCore(
+    TaskPesar,
+    "TaskPesar",
+    8192,
+    NULL,
+    5,
+    &TaskPesar_Handler,
+    1
+  );*/
   
+
   Serial.println("HOLAA");
 
 }
@@ -170,12 +197,13 @@ void loop() {
     if(ctr_on && !vitro_ON && cont_ON==10){
       vitro_ON=true;
       cont_ON=0;
-
+      
       func_writeFirebase("/user1/vitro2545/on", 1);
       
       digitalWrite(RELE_ON,LOW);
-      delay(900);
-      digitalWrite(RELE_ON,HIGH);
+      //delay(900);
+      ticker_rele.once_ms(900, rele_H, RELE_ON);
+      //digitalWrite(RELE_ON,HIGH);
       
       vitroOnOff=millis();
 
@@ -187,18 +215,22 @@ void loop() {
     else if(ctr_on && vitro_ON && cont_ON==10){
       cont_ON=0;
       vitro_ON=false;
+      
       func_writeFirebase("/user1/vitro2545/on", 0);
+      
       Serial.println("OOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOFFFFFFFFFFF");
       digitalWrite(RELE_ON,LOW);
-      delay(900);
-      digitalWrite(RELE_ON,HIGH);
+      //delay(900);
+      ticker_rele.once_ms(900, rele_H, RELE_ON);
+      //digitalWrite(RELE_ON,HIGH);
     }
     //si s'ha rebut ordre d'encendre o apagar la vitro
     else if(notifyFirebaseOn){
       vitro_ON=!vitro_ON;
       digitalWrite(RELE_ON,LOW);
-      delay(900);
-      digitalWrite(RELE_ON,HIGH);
+      //delay(900);
+      ticker_rele.once_ms(900, rele_H, RELE_ON);
+      //digitalWrite(RELE_ON,HIGH);
       vitroOnOff=millis();
       notifyFirebaseOn=false;
     }
@@ -257,12 +289,17 @@ void loop() {
       if((ctr_foc==-1) && !change && ((millis()-vitroOnOff)>= 9000)){
         Serial.println("aix");
         vitro_ON=false;
-
         func_writeFirebase("/user1/vitro2545/on", 0);
+
       }
       //si hi ha un foc seleccionat i cap canvi, es mira si han passat 9 seg
       else if(ctr_foc!=-1 && !change && (millis()-selFoc>= 9000)){
+        Focs.setInactive(ctr_foc);
+        String ruta_write="/user1/vitro2545/flag/flag";
+        ruta_write.concat(ctr_foc);
+        func_writeFirebase(ruta_write, 1);
         ctr_foc=-1;
+        //func_writeFirebase(ruta_write, 0);
         vitroOnOff=millis();
       }
       else if(change && ctr_foc!=-1 && (millis()-selFoc>= 9000)){
@@ -315,20 +352,51 @@ void loop() {
       //balanca.tare();
       Serial.println("reading-......");
       //realitzar 10 lectures i realitzar la mitja
-      
-      float valueBalancaTemp=balanca.get_units(10);
-      Serial.println(valueBalancaTemp);
+      //float valueBalancaTemp=balanca.get_units(10);
+      //Serial.println(valueBalancaTemp);
 
       //si el valor canvia en 3gr o mes , actualitzar el valor de la Firebase
-      if(abs(valueBalancaTemp-balancaOldValue)>=2 || (round(valueBalancaTemp)==0 && balancaOldValue !=0) || abs(balancaOldValue)==1 ){
+      /*if(abs(valueBalancaTemp-balancaOldValue)>=2 || (round(valueBalancaTemp)==0 && balancaOldValue !=0) || abs(balancaOldValue)==1 ){
         Serial.println("ACTUALITZOOOOOOOOOOOOOOOOOOOOOOOOOOO!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
         balancaOldValue=round(valueBalancaTemp);
         func_writeFirebase("/user1/vitro2545/balan%C3%A7a/pes/", balancaOldValue);
       }
+      func_writeFirebase("/user1/vitro2545/balan%C3%A7a/pes/", balancaOldValue);*/
+      updateBalanca();
     }
 
   }
 }
+
+
+void updateBalanca(){
+  if(abs(valueBalanca-balancaOldValue)>=2 || (round(valueBalanca)==0 && balancaOldValue !=0) || abs(balancaOldValue)==1 ){
+    Serial.println("ACTUALITZOOOOOOOOOOOOOOOOOOOOOOOOOOO!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    balancaOldValue=valueBalanca;
+    func_writeFirebase("/user1/vitro2545/balan%C3%A7a/pes/", balancaOldValue);
+  }
+
+}
+void TaskPesar(void *pvParameters) {
+  //vTaskSuspend(NULL);
+  balanca.tare();
+  millisTaskPesar=millis();
+
+  while(valueBalanOn) { // A Task shall never return or exit.
+    if(tarar_bal){
+      tarar_bal=false;
+      balanca.tare();
+    }
+    else{
+      valueBalanca=balanca.get_units(10);
+    }
+    Serial.println(valueBalanca);
+    
+    vTaskDelay(10/portTICK_PERIOD_MS);
+  }
+  vTaskDelete(NULL);
+}
+
 
 //assignacio corresponent del nivell del foc
 void ctr_numCtr(int8_t val, int8_t valFire, String ID){
@@ -364,10 +432,12 @@ void ctr_numCtr(int8_t val, int8_t valFire, String ID){
 //gestio dels canvis en la firebase
 void streamCallback(FirebaseStream data)
 {
+  
   FirebaseJson *json = data.to<FirebaseJson *>();
   //Print all object data
   json->toString(Serial, true);
- 
+  Serial.println(xPortGetCoreID());
+  
   FirebaseJsonData resultOn;
   json->get(resultOn, "/on");
   
@@ -382,7 +452,7 @@ void streamCallback(FirebaseStream data)
 
   FirebaseJsonData valueTimer;
   json->get(valueTimer, "/value");
-
+  
   FirebaseJsonData valueBalanca;
   json->get(valueBalanca, "/pes");
 
@@ -404,12 +474,25 @@ void streamCallback(FirebaseStream data)
       Serial.println("ON BAL");
 
       if(!valueBalanOn){
-        balancaOldValue=0;
-        balanca.power_down();
+        balancaOldValue=-1;
+        //balanca.power_down();
+        //vTaskSuspend(TaskPesar_Handler);
+        //vTaskDelete(TaskPesar_Handler);
         Serial.println("Off BAL");
       }
       else{
-        balanca.power_up();
+        //balanca.power_up();
+        //delay(1000);
+        balanca.tare();
+        //vTaskResume (TaskPesar_Handler);
+        xTaskCreate(
+          TaskPesar,
+          "TaskPesar",
+          8192,
+          NULL,
+          1,
+          &TaskPesar_Handler
+          );     
       }
       //notifyFirebaseOn=true;
     }
@@ -458,12 +541,13 @@ void streamCallback(FirebaseStream data)
     int8_t valueTimerInt= (valueTimer.to<String>()).toInt();
     unsigned long value_f = valueTimerInt * 60000; // min --> millis
     Focs.setTimer(id_tmp, millis(), value_f );  
+    Serial.println("TIMEEER");
   }
 
   //per tarar la balança
   if(valueBalanca.success){
     Serial.println("TARAR");
-    balanca.tare();
+    tarar_bal=true;
   }
   
   json->clear();
@@ -475,7 +559,7 @@ void func_writeFirebase(String ruta, int value){
   Firebase.RTDB.setIntAsync(&fb_write, ruta, value);
 }
 
-void streamTimeoutCallback(bool timeout)
+void streamTimeoutCallback(bool timeout) 
 {
   if (timeout)
     Serial.println("stream timed out, resuming...\n");
@@ -498,12 +582,18 @@ void f_selecFoc(int8_t id, uint8_t pin){
   cont_MINUS=0;
   
   digitalWrite(pin,LOW);
-  delay(900);
+  delay(600);
+  //ticker_rele.once_ms(900,rele_H, pin);
   digitalWrite(pin,HIGH);
   
   selFoc=millis();
+  Serial.println("sel!!!!!!!!!!!!!!!!!!");
+  Serial.printf("PIN %i\n", pin);
 }
 
+void rele_H(int pin){
+  digitalWrite(pin,HIGH);
+}
 //per restar un nivell al foc
 void f_minus(){
   cont_B=0;
@@ -519,8 +609,9 @@ void f_minus(){
   if (ctr_foc != -1) {
     
     digitalWrite(RELE_MINUS,LOW);
-    delay(400);
-    digitalWrite(RELE_MINUS,HIGH);
+    //delay(400);
+    ticker_rele.once_ms(400, rele_H, RELE_MINUS);
+    //digitalWrite(RELE_MINUS,HIGH);
     
     int8_t tmp_val = Focs.getValue(ctr_foc);
     change=true;
@@ -532,6 +623,7 @@ void f_minus(){
         String ruta_write="/user1/vitro2545/num_control/";
         ruta_write.concat(ctr_foc);
         ruta_write.concat("_state");
+
         func_writeFirebase(ruta_write, 9);
       }
       else{
@@ -565,7 +657,16 @@ void f_minus(){
     selFoc=millis();
   }
 }
-
+void f_minus_t(int repeat){
+  if(temps_T_counter!=repeat){
+    temps_T_counter++;
+    f_minus();
+  }
+  else{
+    ticker_temps.detach();
+    temps_T_counter=0;
+  }
+}
 //reset de les variables i afeguir un nivell al foc
 void f_add(){
   change=true;
@@ -578,6 +679,7 @@ void f_add(){
   notifyFirebaseFocsAdd=false;
   Serial.println("ADD!!!!");
   if (ctr_foc != -1) {
+    
     int8_t tmp_val = Focs.getValue(ctr_foc);
     if (tmp_val == -1) {
       Focs.setActive(ctr_foc, 5);
@@ -587,6 +689,7 @@ void f_add(){
         ruta_write.concat(ctr_foc);
         ruta_write.concat("_state");
         Serial.println(ruta_write);
+        
         func_writeFirebase(ruta_write, 5);
       }
       else{
@@ -609,8 +712,10 @@ void f_add(){
     }
 
     digitalWrite(RELE_ADD,LOW);
-    delay(400);
-    digitalWrite(RELE_ADD,HIGH);
+    //delay(400);
+    ticker_rele.once_ms(400, rele_H, RELE_ADD);
+
+    //digitalWrite(RELE_ADD,HIGH);
 
     selFoc=millis();
   }
@@ -618,6 +723,7 @@ void f_add(){
 
 //per comprovar si ha passat el temps corresponent dels timers
 void ctrTimers(int8_t ID, unsigned long vF, unsigned long vI){
+
   if(millis()-vI>=vF){ //si ha passat el temps, resetejem
     Serial.println("holiiii");
     uint8_t pin;
@@ -633,39 +739,53 @@ void ctrTimers(int8_t ID, unsigned long vF, unsigned long vI){
       timer_2_state=false;
       pin=RELE_P;
     }
-
+    valorFirebaseOld[ID]=-1;
     //actualitza la firebase
     String ruta_write="/user1/vitro2545/timer/";
     ruta_write.concat(ID);
     ruta_write.concat("_state/value");
+    
     func_writeFirebase(ruta_write, 0);
     
     ruta_write="/user1/vitro2545/timer/";
     ruta_write.concat(ID);
     ruta_write.concat("_state/on");
+
     func_writeFirebase(ruta_write, 0);
 
+
+    //digitalWrite(pin,LOW);
+    //delay(900);
+    //ticker_rele.once_ms(900,rele_H, pin);
+    //digitalWrite(pin,HIGH);
     f_selecFoc(ID, pin);
     
-    int8_t temp_value= Focs.getValue(ID);
-    for(int i=0; i<temp_value; i++){
+    int temp_value= Focs.getValue(ID);
+
+    ticker_temps.attach_ms(1200, f_minus_t, temp_value);
+    /*for(int i=0; i<temp_value; i++){
       f_minus();
       delay(500);
-    }
+    }*/
     //fer sonar el buzzer
-    for(int i=0; i<3; i++){
+    /*for(int i=0; i<3; i++){
       digitalWrite(PIN_ALARM, HIGH);    
       delay(1000);  
       digitalWrite(PIN_ALARM, LOW);
       delay(1000);
-    }
+    }*/
   }
   else{ 
     long vTempsPassat=vF-(millis()-vI);
     int valorFirebase=(vTempsPassat/60000)+1;
-    String ruta_write="/user1/vitro2545/timer/";
-    ruta_write.concat(ID);
-    ruta_write.concat("_state/value");
-    func_writeFirebase(ruta_write, valorFirebase);
+    if(valorFirebase!=valorFirebaseOld[ID]){
+      valorFirebaseOld[ID]=valorFirebase;
+      String ruta_write="/user1/vitro2545/timer/";
+      ruta_write.concat(ID);
+      ruta_write.concat("_state/value");
+      
+      func_writeFirebase(ruta_write, valorFirebase);
+    }
+    
   }
 }
