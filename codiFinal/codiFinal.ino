@@ -20,6 +20,11 @@ int8_t ctr_foc = -1;
 bool vitro_ON=false;
 bool change=false;
 
+bool change_bF=true;
+bool change_mF=true;
+bool change_pF=true;
+
+
 int8_t cont_ON=0;
 int8_t cont_P=0;
 int8_t cont_M=0;
@@ -46,6 +51,10 @@ bool valueBalanOn=false;
 unsigned long sendDataPrevMillis = 0;
 unsigned long vitroOnOff = 0;
 unsigned long selFoc = 0;
+
+unsigned long selFocB = 0;
+unsigned long selFocM = 0;
+unsigned long selFocP = 0;
 
 TaskHandle_t TaskPesar_Handler;
 unsigned long millisTaskPesar=0;
@@ -292,17 +301,47 @@ void loop() {
         func_writeFirebase("/user1/vitro2545/on", 0);
 
       }
+      
       //si hi ha un foc seleccionat i cap canvi, es mira si han passat 9 seg
-      else if(ctr_foc!=-1 && !change && (millis()-selFoc>= 9000)){
-        Focs.setInactive(ctr_foc);
-        String ruta_write="/user1/vitro2545/flag/flag";
-        ruta_write.concat(ctr_foc);
-        func_writeFirebase(ruta_write, 1);
-        ctr_foc=-1;
-        //func_writeFirebase(ruta_write, 0);
-        vitroOnOff=millis();
+      else if(ctr_foc!=-1 ){
+        
+        if(!change_bF && (millis()-selFocB>= 9000) ){
+          Serial.println("he entrat B -------");
+          change_bF=true;
+          Focs.setInactive(0);
+          String ruta_write="/user1/vitro2545/flag/flag";
+          ruta_write.concat(0);
+          func_writeFirebase(ruta_write, 1);
+          func_writeFirebase(ruta_write, 0);
+        }
+        else if(!change_mF && (millis()-selFocM>= 9000)){
+          Serial.println("he entrat M -------");
+          change_mF=true;
+          Focs.setInactive(1);
+          String ruta_write="/user1/vitro2545/flag/flag";
+          ruta_write.concat(1);
+          func_writeFirebase(ruta_write, 1);
+          func_writeFirebase(ruta_write, 0);
+        }
+        else if(!change_pF && (millis()-selFocP>= 9000)){
+          Serial.println("he entrat P -------");
+          change_pF=true;
+          Focs.setInactive(2);
+          String ruta_write="/user1/vitro2545/flag/flag";
+          ruta_write.concat(2);
+          func_writeFirebase(ruta_write, 1);
+          func_writeFirebase(ruta_write, 0);
+        }
+  
+        if(!change && (millis()-selFoc>= 9000)){
+          Focs.setAllInactive();
+          ctr_foc=-1;
+          //func_writeFirebase(ruta_write, 0);
+          vitroOnOff=millis();
+        }
       }
-      else if(change && ctr_foc!=-1 && (millis()-selFoc>= 9000)){
+      
+      if(change && ctr_foc!=-1 && (millis()-selFoc>= 9000)){
         ctr_foc=-1;
       }
       else if(change){
@@ -326,12 +365,23 @@ void loop() {
         ctrTimers(2,vF,vI);
       }
     }
+    
     //per apagar la vitro
     else if (!vitro_ON) {
       //reset de variables ctr
       change=false;
+
+      change_bF=true;
+      change_mF=true;
+      change_pF=true;
+      
       vitroOnOff=0;
       selFoc=0;
+
+      selFocB=0;
+      selFocM=0;
+      selFocP=0;
+      
       ctr_on = false;
       ctr_foc = -1;
       Focs.setAllInactive();
@@ -585,7 +635,15 @@ void f_selecFoc(int8_t id, uint8_t pin){
   delay(600);
   //ticker_rele.once_ms(900,rele_H, pin);
   digitalWrite(pin,HIGH);
-  
+  /*if(id==0){
+    selFocB=millis();
+  }
+  else if(id==1){
+    selFocM=millis();
+  }
+  else{
+    selFocP=millis();
+  }*/
   selFoc=millis();
   Serial.println("sel!!!!!!!!!!!!!!!!!!");
   Serial.printf("PIN %i\n", pin);
@@ -607,7 +665,7 @@ void f_minus(){
   
   Serial.println("MINUS!!!!");
   if (ctr_foc != -1) {
-    
+
     digitalWrite(RELE_MINUS,LOW);
     //delay(400);
     ticker_rele.once_ms(400, rele_H, RELE_MINUS);
@@ -642,6 +700,22 @@ void f_minus(){
       else{
         writeFirebase=true;
       }
+
+      if((tmp_val-1)==0){
+        if(ctr_foc==0){
+          change_bF=false;
+          selFocB=millis();
+
+        }
+        else if(ctr_foc==1){
+          change_mF=false;
+          selFocM=millis();
+        }
+        else{
+          change_pF=false;
+          selFocP=millis();
+        }
+      }
     }
     //mirar si els 3 focs estan a 0
     int8_t counter_chng=0;
@@ -654,6 +728,15 @@ void f_minus(){
     if(counter_chng==3){
       change=false;
     }
+    /*if(ctr_foc==0){
+      selFocB=millis();
+    }
+    else if(ctr_foc==1){
+      selFocM=millis();
+    }
+    else{
+      selFocP=millis();
+    }*/
     selFoc=millis();
   }
 }
@@ -716,7 +799,15 @@ void f_add(){
     ticker_rele.once_ms(400, rele_H, RELE_ADD);
 
     //digitalWrite(RELE_ADD,HIGH);
-
+    /*if(ctr_foc==0){
+      selFocB=millis();  
+    }
+    else if(ctr_foc==1){
+      selFocM=millis();
+    }
+    else{
+      selFocP=millis();
+    }*/
     selFoc=millis();
   }
 }
