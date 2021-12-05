@@ -11,6 +11,9 @@
 
 #include <Ticker.h>
 
+//llibreria pel sensor de gestos i proximitat APDS9066
+#include "Adafruit_APDS9960.h"
+
 //Provide the RTDB payload printing info and other helper functions.
 #include <addons/RTDBHelper.h>
 //Provide the token generation process info.

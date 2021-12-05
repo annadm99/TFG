@@ -56,6 +56,9 @@ unsigned long selFocB = 0;
 unsigned long selFocM = 0;
 unsigned long selFocP = 0;
 
+//temps que no detecta presència
+unsigned long temps_Sdistancia=0;
+
 TaskHandle_t TaskPesar_Handler;
 unsigned long millisTaskPesar=0;
 TaskHandle_t TaskPesAct_Handler;
@@ -65,6 +68,9 @@ focs Focs = focs();
 
 //creacio de la balança
 HX711 balanca;
+
+//creació de l'objecte apds9960
+Adafruit_APDS9960 apds;
 
 
 float balancaOldValue=-1;
@@ -164,19 +170,19 @@ void setup() {
   balanca.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
   balanca.set_scale(402.17f); 
   balanca.tare();
-  //balanca.power_down();
 
-  /*xTaskCreatePinnedToCore(
-    TaskPesar,
-    "TaskPesar",
-    8192,
-    NULL,
-    5,
-    &TaskPesar_Handler,
-    1
-  );*/
+  //inicialitzacio del apds
+  if(!apds.begin()){
+    Serial.println("failed to initialize device! Please check your wiring.");
+  }
+  else{
+    Serial.println("Device initialized!");
+  }
+  //enable proximity mode
+  apds.enableProximity(true);
+  //enable gesture mode
+  apds.enableGesture(true);
   
-
   Serial.println("HOLAA");
 
 }
@@ -186,6 +192,9 @@ void loop() {
   if (millis() - sendDataPrevMillis > 50 || sendDataPrevMillis == 0) { //50
     //temporitzador
     sendDataPrevMillis = millis();
+
+    //llegeixo el gest
+    uint8_t gesture = apds.readGesture();
 
     int valueON = touchRead(PIN_ON);
 
@@ -244,6 +253,17 @@ void loop() {
       notifyFirebaseOn=false;
     }
 
+    //si es llegueix un gest per obrir o tancar la vitro
+    else if(gesture == APDS9960_DOWN){
+      vitro_ON=!vitro_ON;
+      digitalWrite(RELE_ON,LOW);
+      //delay(900);
+      ticker_rele.once_ms(900, rele_H, RELE_ON);
+      vitroOnOff=millis();
+      func_writeFirebase("/user1/vitro2545/on", 0);
+      Serial.println("DOWN");
+    }
+    
     //si esta oberta
     if (vitro_ON) {
 
@@ -255,9 +275,25 @@ void loop() {
       int valueM = touchRead(PIN_M);
       int valueB = touchRead(PIN_B);
 
+      //en casa d'haver foc setejat, lleguim el sensor de distancia 
+      if(apds.readProximity()>=3 && vitroOnOff==0){
+        Serial.println(apds.readProximity());
+        temps_Sdistancia=millis();
+        
+      }
+      //si hi ha un foc setejat mirem si han passat 5 min sense detectar presencia i apaguem la vitro
+      if((millis() - temps_Sdistancia >= 50000) && vitroOnOff==0){
+        vitro_ON=false;
+        func_writeFirebase("/user1/vitro2545/on", 0);
+        digitalWrite(RELE_ON,LOW);
+        ticker_rele.once_ms(900, rele_H, RELE_ON);
+        
+        Serial.println("apago que no detecto");
+      }
       //si es selecciona el foc petit
-      if (cont_P==10 || notifyFirebaseFoc==ID_P) {
+      else if (cont_P==10 || notifyFirebaseFoc==ID_P) {
         f_selecFoc(2, RELE_P);
+        temps_Sdistancia=millis();
       }
       else if((valueP <= 20) && (valueP > 0)){
         cont_P++;
@@ -266,6 +302,7 @@ void loop() {
       //si es selecciona el foc mitja
       else if (cont_M==10 || notifyFirebaseFoc==ID_M) {
         f_selecFoc(1, RELE_M);
+        temps_Sdistancia=millis();
       }
       else if((valueM <= 20) && (valueM > 0) ){
         cont_M++;
@@ -274,6 +311,7 @@ void loop() {
       //si es selecciona el foc gran
       else if (cont_B==10 || notifyFirebaseFoc==ID_B) {
         f_selecFoc(0, RELE_B);
+        temps_Sdistancia=millis();
       }
       else if((valueB <= 20) && (valueB > 0)){
         cont_B++;
@@ -344,7 +382,7 @@ void loop() {
       if(change && ctr_foc!=-1 && (millis()-selFoc>= 9000)){
         ctr_foc=-1;
       }
-      else if(change){
+      else if(change){ //quan mínim hi ha un foc obert amb nivell setejat
         vitroOnOff=0;
       }
 
